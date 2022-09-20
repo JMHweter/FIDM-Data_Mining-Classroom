@@ -1,0 +1,125 @@
+ ---
+title: "Data Mining, KNN"
+author: "Jörgen Weterings - Author, Jari Meenhuis - Reviewer"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_notebook:
+  toc: yes
+toc_depth: 2
+ ---
+ 
+
+```{r}
+install.packages("readr")
+install.packages("class")
+install.packages("magrittr")
+install.packages("caret")
+install.packages("e1071")
+
+library(readr)
+library(tidyverse)
+library(class)
+library(magrittr)
+library(caret)
+library(lattice)
+library(e1071)
+```
+
+
+---
+## Business Understanding
+For the donation of blood it is necessary to check the person giving the blood on invective diseases. It is in the greatest interest of the person receiving blood that he or she will not be infected with a disease. The person receiving blood will most likely already be weakened because of a disease or they are recovering from an operation. Therefore it is necessary for the blood bank to test each person giving blood on invective diseases.  
+
+
+## Data Understanding
+*"Choose a suitable dataset from [this](https://github.com/HAN-M3DM-Data-Mining/assignments/tree/master/datasets) folder and train  your own kNN model. Follow all the steps from the CRISP-DM model."*
+The chosen data set is the HCV data set and this dataset consists of a a column with; patient number, whether they are a blood donor or not, age, sex and different blood values
+
+```{r}
+url <- "https://raw.githubusercontent.com/HAN-M3DM-Data-Mining/assignments/master/datasets/KNN-hcvdat0.csv"
+rawDF <- read_csv(url)
+View(rawDF)
+str(rawDF)
+```
+
+## Data Preparation
+
+# The first row of data does not contribute to the end result so we can delete that one
+```{r}
+cleanDF <- rawDF[,-1]
+head(cleanDF)
+View(cleanDF)
+```
+
+# there are also NA values which have to be removed
+```{r}
+cleanDF2 <- drop_na(cleanDF)
+head(cleanDF2)
+View(cleanDF2)
+cleanDF3 <- na_omit(cleanDF)
+head(cleanDF3)
+View(cleanDF3)
+```
+
+# normalizing the data
+```{r}
+cntDiag <- table(cleanDF$Category)
+propDiag <- round(prop.table(cntDiag)*100, digits = 1)
+
+cntDiag
+propDiag
+
+cleanDF <- cleanDF %>% factor
+cleanDF <- fct_collapse(cleanDF$Category, donor = "0=Blood Donor", hepatitis = c("0s=suspect Blood Donor", "1=Hepatitis", "2=Fibrosis", "3=Cirrhosis"))
+levels(cleanDF2$Category)
+head(cleanDF3, 10)
+summary(cleanDF4[c("CREA", "GGT", "PROT")])
+
+normalize <- function(x) { 
+  return ((max(x) - min(x)) / (x - min(x))) 
+}
+```
+
+# creating the test and training sets
+```{r}
+testSet1 <- c(1:2)
+testSet2 <- c(3:5) * 10
+
+cat("testSet1:", testSet1, "\n")
+cat("testSet2:", testSet2, "\n")
+
+cat("Normalized testSet1:", normalize(testSet1), "\n")
+cat("Normalized testSet2:", normalize(testSet2))
+
+nCols <- dim(cleanDF3)[2]
+nRows <- dim(cleanDF3)[1]
+NorDF <- cleanDF[4:nCols]
+View(NorDF)
+cleanDF3_no <- sapply(1:10,
+                      function(x) {
+                        normalize(NorDF[,x])
+                      }) %>% as.data.frame()
+summary(cleanDF3_no[c("CREA", "GGT", "PROT")])
+
+count(cleanDF3_no)
+sampleVec <- sample(c(1:nRows), 489)
+trainDF_feat <- rawDF[sampleVec, ]
+testDF_feat <- rawDF[-sampleVec, ]
+trainDF_labels <- cleanDF3[sampleVec, 1]
+testDF_labels <- cleanDF3[-sampleVec, 1]
+cl <- trainDF_labels[,1, drop=TRUE]
+```
+
+## data Modeling
+```{r}
+cleanDF_test_predi <- knn(train = as.matrix(trainDF_feat), test = as.matrix(testDF_feat), cl = as.matrix(trainDF_labels), k = 5)
+head(cleanDF_test_predi)
+confusionMatrix(cleanDF_test_predi, testDF_labels[[0]], positive = NULL, dnn = c("Prediction", "True"))
+```
+
+## Evaluation and Deployment
+
+The model has an accuracy of 89%, which could cause a higher risk factor than desired for something that can potentially harm the receiver of the blood. Next to that you rather have a false positive than a false negative. With a false positive there is no risk for the receiving party of getting an invective disease that may kill them without proper treatment. In this model there are no false positives but quite a few false negatives, this could be the case because the values of the people with (suspected) Hepatitis is so small that the model couldn't train to recognize it properly. If you look at the values there are really small differences between the people with (suspected) hepatitis and the healthy ones, so that makes it extra hard to train on it. In the training group there were only 48 cases in which there was hepatitis so that makes it difficult for the model to be able to really determine the small differences. 
+
+
+##reviewer adds suggestions for improving the model
