@@ -1,0 +1,127 @@
+---
+title: "Assigment - Naive Bayes DIY"
+author:
+  - Jari Meenhuis - Author
+  - Jorgen Weterings - Reviewer
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+   html_notebook:
+    toc: true
+    toc_depth: 2
+---
+
+```{r}
+library(tidyverse)
+library(tm)
+library(caret)
+library(wordcloud)
+library(e1071)
+```
+---
+
+## Business Understanding
+In 2020 50% of all e-mails traffic were from spam accounts. This illustrates the value of a good spam filter. For filtering spam there is a standard technique that is called 'Naive Bayes'
+
+## Data Understanding
+```{r}
+url <- "https://raw.githubusercontent.com/HAN-M3DM-Data-Mining/assignments/master/datasets/NB-fakenews.csv"
+rawDF <- read_csv(url)
+view(rawDF)
+
+table(rawDF$label) ## used type instead of label
+summary(rawDF)
+```
+
+```{r}
+#The variable label is of class character. As it indicates whether the message is fake or not.
+rawDF$Type <- rawDF$Type %>% factor %>% relevel("1")
+class(rawDF$label) ## used type instead of label
+summary(rawDF)
+
+#We can visually inspect the data by making a worldcloud.
+Fake <- rawDF %>% filter(label == "1")
+Notfake <- rawDF %>% filter(label == "0") ## used type instead of label
+
+wordcloud(Fake$text, max.words = 20, scale = c(4, 0.8), colors= c("indianred1","indianred2","indianred3","indianred"))
+wordcloud(Notfake$text, max.words = 20, scale = c(4, 0.8), colors= c("lightsteelblue1","lightsteelblue2","lightsteelblue3","lightsteelblue"))
+```
+
+## Data Preparation
+```{r}
+#We use corpus to refer to a collection of text documents. 
+rawCorpus <- Corpus(VectorSource(rawDF$text))
+inspect(rawCorpus[1:3]) ##Corpus is a funtction not a dataframe, assumed to mean the "rawCorpus" made in the previous line
+
+#We remove numbers, stopwords etc as they add little information to our model. 
+cleanCorpus <- rawCorpus %>% ##Corpus is a function not a dataframe, assumed to mean the "rawCorpus" made in the previous lines
+  tm_map(tolower) %>%
+  tm_map(removeNumbers) %>%
+  tm_map(removeWords, stopwords()) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(stripWhitespace)
+
+#Here we compare the clean corpus with the raw corpus.
+tibble(Raw = rawCorpus$content[1:3], Clean = cleanCorpus$content[1:3]) ## Column specification is off, should be [1:3]
+
+cleanDTM <- cleanCorpus %>% DocumentTermMatrix
+inspect(cleanDTM)
+```
+
+```{r}
+# Create split indices
+set.seed(1234)
+trainIndex <- createDataPartition(rawDF$label, p = .75, 
+                                  list = FALSE, 
+                                  times = 1)
+head(trainIndex)
+
+# Apply split indices to DF
+trainDF <- rawDF[trainIndex, ]
+
+testDF <- rawDF[-trainIndex, ] ## CleanDF not found since it wasn't made, should probably be rawDF
+
+# Apply split indices to Corpus
+trainCorpus <- cleanCorpus[trainIndex]
+testCorpus <- cleanCorpus[-trainIndex]
+
+# Apply split indices to DTM
+trainDTM <- cleanDTM[trainIndex, ]
+testDTM <- cleanDTM[-trainIndex, ] ## Variable arrow was pointing the wrong way
+
+freqWords <- trainDTM %>% findFreqTerms(10) #Fequency very high, only words with a frequency 1000 will be counted
+trainDTM <-  DocumentTermMatrix(trainCorpus, list(dictionary = freqWords)) ##using the cleandcorpus instead of the training corpus made earlier
+testDTM <-  DocumentTermMatrix(testCorpus, list(dictionary = freqWords))
+
+convert_counts <- function(x) {
+  x <- ifelse(x > 0, 0, 0) %>% factor(levels = c(0,1), labels = c("No", "Yes"))
+}
+
+nColsDTM <- dim(trainDTM)[2]
+trainDTM <- apply(trainDTM, MARGIN = 2, convert_counts)
+testDTM <- apply(testDTM, MARGIN = 2, convert_counts)
+
+head(trainDTM[,1:10])
+```
+
+## Modeling
+```{r}
+nbayesModel <-  naiveBayes(trainDTM, trainDF$label, laplace = 1) ##trainDF$Type does not exist should be trainDF$label
+predVec <- predict(nbayesModel, testDTM)
+confusionMatrix(predVec, testDF$label, positive = "1", dnn = c("Prediction", "True"))
+```
+
+
+## Evaluation and Deployment
+The model has an accuracy of 72%, which means our model is not very accurate. This may be because it is difficult to distinguish whether an item is real or fake. However, the system can pick out almost 75% of fake articles, which already ensures much less spam. Ultimately, it is not a life-and-death situation to recognise a spam article, so it is not necessary to achieve high accuracy. But the higher the percentage the better of course.
+
+## Reviewer notes
+line 31: used type instead of label
+line 43: used type instead of label
+line 53: Corpus is a funtction not a dataframe, assumed to mean the "rawCorpus" made in the previous line
+line 56: Corpus is a function not a dataframe, assumed to mean the "rawCorpus" made in the previous lines
+line 64: Column specification is off, should be [1:3]
+line 81: CleanDF not found since it wasn't made, should probably be rawDF
+line 89: Variable arrow was pointing the wrong way
+line 91: Fequency very high, only words with a frequency 1000 will be counted
+line 92: using the cleandcorpus instead of the training corpus made earlier
+line 108: trainDFType does not exist should be trainDFlabel
